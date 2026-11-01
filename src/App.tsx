@@ -107,7 +107,38 @@ export default function App() {
       console.warn('Failed to fetch customers:', err);
     }
 
-    fetchApi<Product[]>('/products').then(setProducts).catch(() => {});
+    try {
+      const serverProducts = await fetchApi<Product[]>('/products');
+      let localProducts: Product[] = [];
+      try {
+        const raw = localStorage.getItem('hesabyar_persisted_products_v1');
+        if (raw) localProducts = JSON.parse(raw);
+      } catch {}
+
+      // If server has 0 products but client has saved products, sync them to the server instance
+      if (serverProducts.length === 0 && localProducts.length > 0) {
+        try {
+          await fetchApi('/products/batch-sync', {
+            method: 'POST',
+            body: JSON.stringify({ products: localProducts })
+          });
+          const reFetched = await fetchApi<Product[]>('/products');
+          setProducts(reFetched);
+        } catch {
+          setProducts(localProducts);
+        }
+      } else {
+        setProducts(serverProducts);
+        if (serverProducts.length > 0) {
+          try {
+            localStorage.setItem('hesabyar_persisted_products_v1', JSON.stringify(serverProducts));
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch products:', err);
+    }
+
     fetchApi<Record<string, string>>('/settings').then(setStoreSettings).catch(() => {});
   };
 

@@ -29,7 +29,7 @@ export const navItems = [
   { id: 'customers', label: 'مشتریان', icon: Users },
   { id: 'receivables', label: 'بدهکاران و مطالبات', icon: AlertCircle },
   { id: 'payments', label: 'پرداخت‌ها و وصولی', icon: CreditCard },
-  { id: 'products', label: 'فهرست کالاها', icon: Package },
+  { id: 'products', label: 'کالاها و موجودی انبار', icon: Package },
   { id: 'reports', label: 'گزارش‌ها و خروجی‌ها', icon: FileSpreadsheet },
   { id: 'settings', label: 'تنظیمات و پشتیبان', icon: Settings },
 ];

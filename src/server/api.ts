@@ -443,6 +443,43 @@ apiRouter.post('/products', requireAuth, (req: Request, res: Response) => {
   }
 });
 
+apiRouter.post('/products/batch-sync', requireAuth, (req: Request, res: Response) => {
+  try {
+    const { products } = req.body;
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.json({ success: true, count: 0 });
+    }
+
+    const insertOrReplace = db.prepare(`
+      INSERT OR REPLACE INTO products (id, name, category, quantity, code, unit, default_sale_price, purchase_price, notes, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `);
+
+    const syncTransaction = db.transaction((list: any[]) => {
+      for (const p of list) {
+        if (p.id && p.name) {
+          insertOrReplace.run(
+            p.id,
+            p.name.trim(),
+            p.category || 'عمومی',
+            p.quantity !== undefined ? p.quantity : 0,
+            p.code || null,
+            p.unit || 'عدد',
+            p.default_sale_price || 0,
+            p.purchase_price || 0,
+            p.notes || null
+          );
+        }
+      }
+    });
+
+    syncTransaction(products);
+    res.json({ success: true, count: products.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 apiRouter.put('/products/:id', requireAuth, (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
