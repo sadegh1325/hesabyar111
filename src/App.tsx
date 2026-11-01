@@ -70,10 +70,43 @@ export default function App() {
       .finally(() => setCheckingAuth(false));
   }, []);
 
-  // Fetch core store data when logged in
-  const refreshCoreData = () => {
+  // Fetch core store data when logged in with client-side fail-safe persistence
+  const refreshCoreData = async () => {
     if (!currentUser) return;
-    fetchApi<Customer[]>('/customers').then(setCustomers).catch(() => {});
+    try {
+      const serverCustomers = await fetchApi<Customer[]>('/customers');
+
+      // Client-side fail-safe: check if local backup has customers that serverless instance might have missed
+      let localCustomers: Customer[] = [];
+      try {
+        const raw = localStorage.getItem('hesabyar_persisted_customers_v1');
+        if (raw) localCustomers = JSON.parse(raw);
+      } catch {}
+
+      // If server only has customer 1 (default) but client has saved customers, sync them to the server instance
+      if (serverCustomers.length <= 1 && localCustomers.length > 1) {
+        try {
+          await fetchApi('/customers/batch-sync', {
+            method: 'POST',
+            body: JSON.stringify({ customers: localCustomers })
+          });
+          const reFetched = await fetchApi<Customer[]>('/customers');
+          setCustomers(reFetched);
+          return;
+        } catch {}
+      }
+
+      setCustomers(serverCustomers);
+      // Update local persistent backup
+      if (serverCustomers.length > 0) {
+        try {
+          localStorage.setItem('hesabyar_persisted_customers_v1', JSON.stringify(serverCustomers));
+        } catch {}
+      }
+    } catch (err) {
+      console.warn('Failed to fetch customers:', err);
+    }
+
     fetchApi<Product[]>('/products').then(setProducts).catch(() => {});
     fetchApi<Record<string, string>>('/settings').then(setStoreSettings).catch(() => {});
   };

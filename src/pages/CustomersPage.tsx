@@ -131,8 +131,18 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
                   return (
                     <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="py-3.5 px-4 text-center font-mono text-slate-400">{c.id}</td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-900 text-sm">
-                        {c.name}
+                      <td className="py-3.5 px-4 text-slate-900">
+                        <div className="font-semibold text-slate-900 text-sm">{c.name}</div>
+                        {c.phone && (
+                          <div className="text-[11px] text-slate-500 font-mono mt-0.5" dir="ltr">
+                            {c.phone}
+                          </div>
+                        )}
+                        {c.address && (
+                          <div className="text-[10px] text-slate-400 mt-0.5 truncate max-w-xs">
+                            {c.address}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-left font-mono tabular-nums text-slate-800">
                         {formatToman(c.totalInvoiced)}

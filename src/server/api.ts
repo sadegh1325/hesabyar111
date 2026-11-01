@@ -276,6 +276,39 @@ apiRouter.post('/customers', requireAuth, (req: Request, res: Response) => {
   }
 });
 
+apiRouter.post('/customers/batch-sync', requireAuth, (req: Request, res: Response) => {
+  try {
+    const { customers } = req.body;
+    if (!Array.isArray(customers) || customers.length === 0) {
+      return res.json({ success: true, count: 0 });
+    }
+
+    const insertOrReplace = db.prepare(`
+      INSERT OR REPLACE INTO customers (id, name, phone, address, notes, is_active)
+      VALUES (?, ?, ?, ?, ?, 1)
+    `);
+
+    const syncTransaction = db.transaction((list: any[]) => {
+      for (const c of list) {
+        if (c.id && c.name && c.id !== 1) {
+          insertOrReplace.run(
+            c.id,
+            c.name.trim(),
+            c.phone ? c.phone.trim() : null,
+            c.address ? c.address.trim() : null,
+            c.notes ? c.notes.trim() : null
+          );
+        }
+      }
+    });
+
+    syncTransaction(customers);
+    res.json({ success: true, count: customers.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 apiRouter.put('/customers/:id', requireAuth, (req: Request, res: Response) => {
   try {
     const { name, phone, address, notes } = req.body;
