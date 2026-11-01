@@ -52,7 +52,7 @@ export const NewSalePage: React.FC<NewSalePageProps> = ({
 
   // Initial payment
   const [initialPayment, setInitialPayment] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<string>('pos');
+  const [paymentMethod, setPaymentMethod] = useState<string>('card_to_card');
   const [trackingCode, setTrackingCode] = useState<string>('');
 
   // Modals for quick customer/product creation
@@ -429,12 +429,10 @@ export const NewSalePage: React.FC<NewSalePageProps> = ({
               <select
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 font-medium"
               >
-                <option value="pos">کارتخوان فروشگاه (POS)</option>
+                <option value="card_to_card">کارت به کارت</option>
                 <option value="cash">وجه نقد</option>
-                <option value="bank_transfer">انتقال بانکی / کارت به کارت</option>
-                <option value="other">سایر</option>
               </select>
             </div>
           </div>

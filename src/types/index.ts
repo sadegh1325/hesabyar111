@@ -69,7 +69,7 @@ export interface Payment {
   customer_phone?: string;
   amount: number;
   payment_date: string;
-  payment_method: 'cash' | 'pos' | 'bank_transfer' | 'other';
+  payment_method: 'card_to_card' | 'cash' | 'pos' | 'bank_transfer' | 'other';
   tracking_code: string | null;
   notes: string | null;
   status: 'valid' | 'refunded' | 'voided';

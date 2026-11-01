@@ -18,10 +18,11 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
 
   const storeName = storeSettings['store_name'] || 'فروشگاه پارس';
   const methodFa: Record<string, string> = {
-    cash: 'نقدی',
-    pos: 'کارتخوان (POS)',
-    bank_transfer: 'انتقال بانکی / کارت به کارت',
-    other: 'سایر روش‌ها'
+    card_to_card: 'کارت به کارت',
+    bank_transfer: 'کارت به کارت',
+    pos: 'کارت به کارت',
+    cash: 'وجه نقد',
+    other: 'کارت به کارت'
   };
 
   return (

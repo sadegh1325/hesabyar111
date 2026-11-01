@@ -24,7 +24,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [customerId, setCustomerId] = useState<number>(initialCustomerId || 1);
   const [amount, setAmount] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState<string>(getTodayJalali());
-  const [paymentMethod, setPaymentMethod] = useState<string>('pos');
+  const [paymentMethod, setPaymentMethod] = useState<string>('card_to_card');
   const [trackingCode, setTrackingCode] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [customerInvoices, setCustomerInvoices] = useState<Invoice[]>([]);
@@ -200,12 +200,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               <select
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
               >
-                <option value="pos">دستگاه کارتخوان (POS)</option>
-                <option value="cash">نقدی</option>
-                <option value="bank_transfer">کارت به کارت / انتقال پایا</option>
-                <option value="other">سایر روش‌ها</option>
+                <option value="card_to_card">کارت به کارت</option>
+                <option value="cash">وجه نقد</option>
               </select>
             </div>
           </div>
@@ -216,7 +214,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               type="text"
               value={trackingCode}
               onChange={(e) => setTrackingCode(e.target.value)}
-              placeholder="اختیاری - مثلاً شماره رسید پوز یا ارجاع کارت"
+              placeholder="اختیاری - مثلاً شماره پیگیری کارت به کارت"
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
           </div>

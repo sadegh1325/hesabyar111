@@ -59,11 +59,12 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({
   );
 
   const methodFa: Record<string, string> = {
-    cash: 'نقدی',
-    pos: 'کارتخوان (POS)',
-    bank_transfer: 'کارت به کارت / بانکی',
+    card_to_card: 'کارت به کارت',
+    bank_transfer: 'کارت به کارت',
+    pos: 'کارت به کارت',
+    cash: 'وجه نقد',
     credit: 'اعتبار قبلی',
-    other: 'سایر'
+    other: 'کارت به کارت'
   };
 
   return (

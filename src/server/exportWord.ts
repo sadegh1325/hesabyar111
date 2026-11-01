@@ -79,10 +79,11 @@ export async function generateCustomerWordReport(customerId: number): Promise<Bu
   let pIndex = 1;
   for (const pay of payments) {
     const methodFa: Record<string, string> = {
-      cash: 'نقدی',
-      pos: 'کارتخوان',
-      bank_transfer: 'واریز بانکی / کارت به کارت',
-      other: 'سایر'
+      card_to_card: 'کارت به کارت',
+      bank_transfer: 'کارت به کارت',
+      pos: 'کارت به کارت',
+      cash: 'وجه نقد',
+      other: 'کارت به کارت'
     };
     paymentTableRows.push(
       new TableRow({

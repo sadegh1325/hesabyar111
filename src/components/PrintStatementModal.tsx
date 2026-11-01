@@ -188,7 +188,7 @@ export const PrintStatementModal: React.FC<PrintStatementModalProps> = ({
                         <td className="py-2 px-3 text-center font-mono tabular-nums text-slate-600">{p.payment_date}</td>
                         <td className="py-2 px-3 text-left font-mono tabular-nums font-semibold text-emerald-700">{formatToman(p.amount)}</td>
                         <td className="py-2 px-3 text-center text-slate-600">
-                          {p.payment_method === 'cash' ? 'نقدی' : p.payment_method === 'pos' ? 'کارتخوان' : p.payment_method === 'bank_transfer' ? 'بانکی' : 'سایر'}
+                          {p.payment_method === 'cash' ? 'وجه نقد' : 'کارت به کارت'}
                         </td>
                         <td className="py-2 px-3 text-slate-500">{p.tracking_code || p.notes || '-'}</td>
                       </tr>

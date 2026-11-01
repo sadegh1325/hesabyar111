@@ -96,10 +96,11 @@ export function generateComprehensiveExcelReport(options?: { startDate?: string;
   `).all() as any[];
   const paymentsData = payments.map(p => {
     const methodFa: Record<string, string> = {
-      cash: 'نقدی',
-      pos: 'دستگاه کارتخوان (POS)',
-      bank_transfer: 'انتقال بانکی / پایا / کارت',
-      other: 'سایر روش‌ها'
+      card_to_card: 'کارت به کارت',
+      bank_transfer: 'کارت به کارت',
+      pos: 'کارت به کارت',
+      cash: 'وجه نقد',
+      other: 'کارت به کارت'
     };
     return {
       'شناسه پرداخت': p.id,

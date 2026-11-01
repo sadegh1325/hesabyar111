@@ -224,10 +224,11 @@ export async function generateCustomerPdfReport(customerId: number): Promise<Buf
         currentY += 22;
       } else {
         const methodMap: Record<string, string> = {
-          cash: 'نقدی',
-          pos: 'کارتخوان',
-          bank_transfer: 'واریز بانکی / کارت به کارت',
-          other: 'سایر'
+          card_to_card: 'کارت به کارت',
+          bank_transfer: 'کارت به کارت',
+          pos: 'کارت به کارت',
+          cash: 'وجه نقد',
+          other: 'کارت به کارت'
         };
 
         let isAlt = false;
