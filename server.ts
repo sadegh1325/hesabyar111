@@ -1,7 +1,9 @@
+import http from 'http';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { WebSocketServer } from 'ws';
 import { apiRouter } from './src/server/api.js';
 import { initDatabase } from './src/server/db.js';
 
@@ -10,7 +12,18 @@ const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
+  const httpServer = http.createServer(app);
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+  // Gracefully handle any WebSocket connection from Vite client to prevent "WebSocket closed without opened"
+  const wss = new WebSocketServer({ server: httpServer });
+  wss.on('connection', (ws) => {
+    try {
+      ws.send(JSON.stringify({ type: 'connected' }));
+    } catch {}
+    ws.on('message', () => {});
+    ws.on('error', () => {});
+  });
 
   // Initialize DB tables and seed admin user
   initDatabase();
@@ -41,7 +54,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Hesabyar Store Accounting Server listening on http://0.0.0.0:${PORT}`);
   });
 }
