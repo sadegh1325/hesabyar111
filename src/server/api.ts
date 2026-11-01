@@ -155,7 +155,6 @@ apiRouter.post('/auth/logout', (req: Request, res: Response) => {
 
 apiRouter.get('/auth/me', (req: Request, res: Response) => {
   const token = req.cookies?.auth_token || req.headers['authorization']?.replace('Bearer ', '') || (req.query?.token as string);
-  const noAuto = req.query.noAuto === 'true';
 
   if (token) {
     const user = verifySignedToken(token);
@@ -168,35 +167,7 @@ apiRouter.get('/auth/me', (req: Request, res: Response) => {
     }
   }
 
-  // If manual logout was requested, do not auto-login
-  if (noAuto) {
-    return res.json({ authenticated: false });
-  }
-
-  // Seamless auto-provisioning for single store owner in preview/dev
-  const adminUser = db.prepare("SELECT id, username, full_name FROM users WHERE username = 'admin' OR id = 1 LIMIT 1").get() as any;
-  if (adminUser) {
-    const newToken = createSignedToken(adminUser.id, adminUser.username);
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    try {
-      db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(newToken, adminUser.id, expiresAt);
-    } catch {}
-
-    res.cookie('auth_token', newToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none',
-      path: '/',
-      maxAge: 30 * 24 * 60 * 60 * 1000
-    });
-
-    return res.json({
-      authenticated: true,
-      token: newToken,
-      user: { id: adminUser.id, username: adminUser.username, fullName: adminUser.full_name }
-    });
-  }
-
+  // Explicit authentication required: never auto-login
   res.json({ authenticated: false });
 });
 

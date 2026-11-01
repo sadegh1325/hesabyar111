@@ -45,25 +45,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-xs lg:hidden transition-opacity"
           onClick={onClose}
+          onTouchStart={onClose}
         />
       )}
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-0 bottom-0 right-0 z-50 w-64 bg-white border-l border-slate-200 flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
+        className={`fixed top-0 bottom-0 right-0 z-50 w-72 max-w-[85vw] bg-white border-l border-slate-200 flex flex-col transition-transform duration-200 ease-in-out lg:w-64 lg:translate-x-0 ${
+          isOpen ? 'translate-x-0 shadow-2xl' : 'max-lg:hidden max-lg:translate-x-full'
         }`}
       >
         {/* Brand Header */}
-        <div className="h-16 flex items-center justify-between px-5 border-b border-slate-200">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+        <div className="h-16 flex items-center justify-between px-5 border-b border-slate-200 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
               <Store className="w-4 h-4" />
             </div>
-            <div>
-              <span className="font-bold text-slate-900 text-sm tracking-tight block leading-tight">
+            <div className="min-w-0">
+              <span className="font-bold text-slate-900 text-sm tracking-tight block leading-tight truncate">
                 {storeName}
               </span>
               <span className="text-[11px] text-slate-500 font-medium block">
@@ -73,7 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md lg:hidden"
+            className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg lg:hidden cursor-pointer"
             aria-label="بستن منو"
           >
             <X className="w-5 h-5" />
@@ -92,7 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   setActiveTab(item.id);
                   onClose();
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors text-right ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors text-right cursor-pointer ${
                   isActive
                     ? 'bg-slate-900 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -106,7 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
 
         {/* Footer info */}
-        <div className="p-4 border-t border-slate-200 bg-slate-50/50">
+        <div className="p-4 border-t border-slate-200 bg-slate-50/50 shrink-0">
           <div className="flex items-center justify-between text-[11px] text-slate-500">
             <span>نسخه پایدار دیتابیس</span>
             <span className="font-mono text-emerald-700 font-medium">SQLite WAL</span>

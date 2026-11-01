@@ -23,6 +23,7 @@ import { PaymentModal } from './components/PaymentModal';
 import { Customer, Product, Invoice, Payment } from './types';
 import { fetchApi, setAuthToken, downloadFile } from './lib/api';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { BottomNav } from './components/BottomNav';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<{ id: number; username: string; fullName: string } | null>(null);
@@ -141,7 +142,7 @@ export default function App() {
   const storeName = storeSettings['store_name'] || 'فروشگاه حاج کریم و پسران';
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row overflow-x-hidden">
       {/* Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
@@ -152,7 +153,7 @@ export default function App() {
       />
 
       {/* Main Viewport */}
-      <div className="flex-1 flex flex-col min-w-0 lg:mr-64">
+      <div className="flex-1 flex flex-col min-w-0 lg:mr-64 pb-20 lg:pb-0 overflow-x-hidden">
         <OfflineIndicator />
         {/* Top Bar adhering to Top Bar Contract */}
         <TopBar
@@ -226,6 +227,13 @@ export default function App() {
           {activeTab === 'settings' && <SettingsPage />}
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation */}
+      <BottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onOpenMenu={() => setIsSidebarOpen(true)}
+      />
 
       {/* Global Modals */}
       <PrintInvoiceModal
