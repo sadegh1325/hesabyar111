@@ -12,6 +12,7 @@ import {
   X,
   Store
 } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface SidebarProps {
   activeTab: string;
@@ -105,6 +106,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
         </nav>
+
+        {/* PWA Install Promo */}
+        <div className="px-3 pb-2 shrink-0">
+          <PWAInstallButton variant="sidebar" />
+        </div>
 
         {/* Footer info */}
         <div className="p-4 border-t border-slate-200 bg-slate-50/50 shrink-0">

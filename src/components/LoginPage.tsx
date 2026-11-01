@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Store, Lock, User, AlertCircle, ArrowLeft } from 'lucide-react';
 import { fetchApi, setAuthToken } from '../lib/api';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface LoginPageProps {
   onLoginSuccess: (user: { id: number; username: string; fullName: string }) => void;
@@ -96,11 +97,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors shadow-xs disabled:opacity-50"
+            className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
           >
             <span>{loading ? 'در حال ورود...' : 'ورود امن به سامانه'}</span>
             <ArrowLeft className="w-4 h-4" />
           </button>
+
+          {/* Mobile PWA Install Button */}
+          <div className="pt-1">
+            <PWAInstallButton variant="login" />
+          </div>
 
           {/* Quick login hint */}
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-500 space-y-1 mt-4">
