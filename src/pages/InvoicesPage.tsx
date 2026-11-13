@@ -13,12 +13,16 @@ import { formatToman } from '../lib/dateUtils';
 import { fetchApi } from '../lib/api';
 
 interface InvoicesPageProps {
+  dataVersion?: number;
+  onRefreshData?: () => void;
   onNewSale: () => void;
   onOpenPrintInvoice: (inv: Invoice) => void;
   onOpenPaymentForInvoice: (inv: Invoice) => void;
 }
 
 export const InvoicesPage: React.FC<InvoicesPageProps> = ({
+  dataVersion = 0,
+  onRefreshData,
   onNewSale,
   onOpenPrintInvoice,
   onOpenPaymentForInvoice
@@ -41,7 +45,7 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({
 
   useEffect(() => {
     loadInvoices();
-  }, [statusFilter]);
+  }, [statusFilter, dataVersion]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +72,7 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({
       });
       alert('فاکتور با موفقیت ابطال شد و پرداختی‌های آن به اعتبار مشتری برگشت داده شد.');
       loadInvoices();
+      onRefreshData?.();
     } catch (err: any) {
       alert(err.message);
     }

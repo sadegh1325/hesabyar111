@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import { apiRouter } from './src/server/api.js';
-import { initDatabase } from './src/server/db.js';
+import { ensureDbInitialized } from './src/server/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,7 +26,7 @@ async function startServer() {
   });
 
   // Initialize DB tables and seed admin user
-  initDatabase();
+  await ensureDbInitialized();
 
   app.use(express.json({ limit: '50mb' }));
   app.use(cookieParser());

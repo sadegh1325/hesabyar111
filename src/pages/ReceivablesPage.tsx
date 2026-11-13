@@ -13,11 +13,13 @@ import { formatToman, formatNumberFa } from '../lib/dateUtils';
 import { fetchApi, downloadFile } from '../lib/api';
 
 interface ReceivablesPageProps {
+  dataVersion?: number;
   onOpenPaymentForCustomer: (customerId: number) => void;
   onOpenStatement: (customerId: number) => void;
 }
 
 export const ReceivablesPage: React.FC<ReceivablesPageProps> = ({
+  dataVersion = 0,
   onOpenPaymentForCustomer,
   onOpenStatement
 }) => {
@@ -40,7 +42,7 @@ export const ReceivablesPage: React.FC<ReceivablesPageProps> = ({
 
   useEffect(() => {
     loadReceivables();
-  }, []);
+  }, [dataVersion]);
 
   const handleDownloadExcel = async () => {
     setDownloading(true);

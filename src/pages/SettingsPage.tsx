@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Settings,
   Database,
   Lock,
   Download,
-  Upload,
   CheckCircle,
   AlertCircle,
   Play,
@@ -12,13 +10,29 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { fetchApi, downloadFile } from '../lib/api';
+import { reconcileAndSyncDatabase, pullAndCacheSnapshot } from '../lib/sync';
+import { formatNumberFa } from '../lib/dateUtils';
 
-export const SettingsPage: React.FC = () => {
+interface SettingsPageProps {
+  onRefreshData?: () => void;
+}
+
+export const SettingsPage: React.FC<SettingsPageProps> = ({ onRefreshData }) => {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [downloadingDb, setDownloadingDb] = useState(false);
   const [downloadingJson, setDownloadingJson] = useState(false);
+
+  // Database health & sync state
+  const [dbHealth, setDbHealth] = useState<{
+    driver: 'turso' | 'sqlite';
+    persistentCloud: boolean;
+    revision: number;
+    counts: Record<string, number>;
+  } | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Password change state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -34,15 +48,20 @@ export const SettingsPage: React.FC = () => {
   const [restoreJson, setRestoreJson] = useState('');
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
 
-  const loadSettings = () => {
-    fetchApi<Record<string, string>>('/settings')
-      .then(setSettings)
-      .catch((err) => console.warn('Settings fetch warning:', err))
+  const loadSettingsAndHealth = () => {
+    Promise.allSettled([
+      fetchApi<Record<string, string>>('/settings'),
+      fetchApi<any>('/sync/health')
+    ])
+      .then(([setRes, healthRes]) => {
+        if (setRes.status === 'fulfilled') setSettings(setRes.value);
+        if (healthRes.status === 'fulfilled') setDbHealth(healthRes.value);
+      })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    loadSettings();
+    loadSettingsAndHealth();
   }, []);
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -52,10 +71,30 @@ export const SettingsPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify(settings)
       });
+      await pullAndCacheSnapshot();
+      onRefreshData?.();
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const handleFullSyncReconcile = async () => {
+    setSyncLoading(true);
+    setSyncMsg(null);
+    try {
+      const res = await reconcileAndSyncDatabase();
+      setDbHealth(res.health);
+      onRefreshData?.();
+      setSyncMsg({
+        type: 'success',
+        text: `همگام‌سازی کامل و بازبینی ${formatNumberFa(res.stats.invoicesRecalculated)} فاکتور با موفقیت انجام شد (نسخه پایگاه‌داده: ${formatNumberFa(res.stats.revision)}).`
+      });
+    } catch (err: any) {
+      setSyncMsg({ type: 'error', text: err?.message || 'خطا در همگام‌سازی پایگاه‌داده' });
+    } finally {
+      setSyncLoading(false);
     }
   };
 
@@ -84,6 +123,7 @@ export const SettingsPage: React.FC = () => {
     try {
       const res = await fetchApi<{ passed: boolean; results: any[] }>('/tests/run');
       setTestResults(res.results);
+      loadSettingsAndHealth();
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -101,9 +141,11 @@ export const SettingsPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify(parsed)
       });
+      await pullAndCacheSnapshot();
+      onRefreshData?.();
       setRestoreMsg(res.message);
       setRestoreJson('');
-      setTimeout(() => window.location.reload(), 1500);
+      setTimeout(() => window.location.reload(), 1200);
     } catch (err: any) {
       setRestoreMsg(`خطا در بازیابی: ${err.message}`);
     }
@@ -113,10 +155,74 @@ export const SettingsPage: React.FC = () => {
     <div className="space-y-6">
       {/* Header Bar */}
       <div className="bg-white p-5 rounded-xl border border-slate-200">
-        <h2 className="text-sm font-bold text-slate-900">تنظیمات فروشگاه، امنیت و پشتیبان‌گیری</h2>
+        <h2 className="text-sm font-bold text-slate-900">تنظیمات فروشگاه، همگام‌سازی دیتابیس و پشتیبان‌گیری</h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          مدیریت مشخصات فروشگاه، سربرگ فاکتور، تهیه نسخه پشتیبان پایدار و اجرای آزمون‌های خودکار
+          مدیریت مشخصات فروشگاه، همگام‌سازی یکپارچه کل جداول دیتابیس، تهیه نسخه پشتیبان و اجرای آزمون‌های خودکار
         </p>
+      </div>
+
+      {/* Unified Database Sync & Health Card */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-emerald-600" />
+            <div>
+              <h3 className="text-xs font-bold text-slate-900">وضعیت پایگاه‌داده و همگام‌سازی یکپارچه</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                موتور فعال: {dbHealth?.driver === 'turso' ? 'پایگاه‌داده ابری Turso Cloud' : 'SQLite محلی + همگام‌سازی کامل مرورگر (IndexedDB)'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleFullSyncReconcile}
+            disabled={syncLoading}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors shadow-xs cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncLoading ? 'animate-spin' : ''}`} />
+            <span>{syncLoading ? 'در حال همگام‌سازی...' : 'همگام‌سازی و بازبینی یکپارچگی کل دیتابیس'}</span>
+          </button>
+        </div>
+
+        {syncMsg && (
+          <div className={`p-3 rounded-lg flex items-center gap-2 text-xs border ${
+            syncMsg.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border-rose-200 text-rose-700'
+          }`}>
+            {syncMsg.type === 'success' ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+            <span>{syncMsg.text}</span>
+          </div>
+        )}
+
+        {dbHealth && (
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-center">
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-base font-bold font-mono text-slate-900">{formatNumberFa(dbHealth.counts.customers || 0)}</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">مشتریان</div>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-base font-bold font-mono text-slate-900">{formatNumberFa(dbHealth.counts.products || 0)}</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">کالاها</div>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-base font-bold font-mono text-slate-900">{formatNumberFa(dbHealth.counts.invoices || 0)}</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">فاکتورها</div>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-base font-bold font-mono text-slate-900">{formatNumberFa(dbHealth.counts.payments || 0)}</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">پرداخت‌ها</div>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-base font-bold font-mono text-slate-900">{formatNumberFa(dbHealth.counts.expenses || 0)}</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">هزینه‌ها</div>
+            </div>
+            <div className="p-3 bg-emerald-50/70 rounded-lg border border-emerald-200">
+              <div className="text-base font-bold font-mono text-emerald-800">v{formatNumberFa(dbHealth.revision || 1)}</div>
+              <div className="text-[11px] text-emerald-700 mt-0.5">نسخه سینک</div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -198,7 +304,8 @@ export const SettingsPage: React.FC = () => {
 
             <button
               type="submit"
-              className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors font-medium shadow-xs"
+              disabled={loading}
+              className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors font-medium shadow-xs disabled:opacity-50"
             >
               ذخیره تغییرات فروشگاه
             </button>
@@ -287,7 +394,7 @@ export const SettingsPage: React.FC = () => {
               onClick={async () => {
                 setDownloadingDb(true);
                 try {
-                  await downloadFile('/backup/download', 'hesabyar.db');
+                  await downloadFile('/backup/download', dbHealth?.driver === 'turso' ? 'hesabyar_cloud_backup.json' : 'hesabyar.db');
                 } catch (e: any) {
                   alert(e.message || 'خطا در دریافت فایل دیتابیس');
                 } finally {
@@ -303,9 +410,9 @@ export const SettingsPage: React.FC = () => {
 
           {/* Download JSON Dump */}
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-            <span className="text-xs font-bold text-slate-900 block">۲. دانلود نسخه متنی دیتابیس (JSON Dump)</span>
+            <span className="text-xs font-bold text-slate-900 block">۲. دانلود نسخه متنی کامل دیتابیس (JSON Dump)</span>
             <p className="text-[11px] text-slate-500">
-              فایل JSON حاوی تمام رکوردها جهت نگهداری متنی، انتقال آسان و بازیابی سریع در همین پنل.
+              فایل JSON حاوی تمام جداول (مشتریان، کالاها، فاکتورها، پرداخت‌ها، اعتبارات، هزینه‌ها و تنظیمات).
             </p>
             <button
               type="button"
@@ -360,10 +467,10 @@ export const SettingsPage: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <RefreshCw className={`w-4 h-4 text-emerald-600 ${testsLoading ? 'animate-spin' : ''}`} />
-              <h3 className="text-xs font-bold text-slate-900">آزمون‌های خودکار مالی و صحت سیستم (۱۰ آزمون استاندارد)</h3>
+              <h3 className="text-xs font-bold text-slate-900">آزمون‌های خودکار مالی، همگام‌سازی و صحت سیستم</h3>
             </div>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              آزمون فروش، پرداخت مرحله‌ای، تخصیص چند فاکتور، اعتبار مشتری، استرداد وجه، اکسل، ورد، امنیت، پایداری و بک‌آپ
+              آزمون فروش، پرداخت مرحله‌ای، تخصیص چند فاکتور، اعتبار مشتری، استرداد وجه، همگام‌سازی کامل، اکسل، ورد، امنیت و پایداری
             </p>
           </div>
           <button
@@ -372,7 +479,7 @@ export const SettingsPage: React.FC = () => {
             className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors shadow-xs disabled:opacity-50"
           >
             <Play className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{testsLoading ? 'در حال اجرای آزمون‌ها...' : 'اجرای زنده آزمون‌های ۱۰گانه'}</span>
+            <span>{testsLoading ? 'در حال اجرای آزمون‌ها...' : 'اجرای زنده آزمون‌های خودکار'}</span>
           </button>
         </div>
 

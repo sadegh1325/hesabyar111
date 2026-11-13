@@ -12,11 +12,15 @@ import { formatToman } from '../lib/dateUtils';
 import { fetchApi } from '../lib/api';
 
 interface PaymentsPageProps {
+  dataVersion?: number;
+  onRefreshData?: () => void;
   onOpenNewPayment: () => void;
   onPrintReceipt: (payment: Payment) => void;
 }
 
 export const PaymentsPage: React.FC<PaymentsPageProps> = ({
+  dataVersion = 0,
+  onRefreshData,
   onOpenNewPayment,
   onPrintReceipt
 }) => {
@@ -34,7 +38,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({
 
   useEffect(() => {
     loadPayments();
-  }, []);
+  }, [dataVersion]);
 
   const handleRefund = async (payment: Payment) => {
     const reason = prompt('لطفاً دلیل استرداد / برگشت این وجه را وارد کنید:');
@@ -47,6 +51,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({
       });
       alert('پرداخت با موفقیت برگشت داده شد و مانده فاکتور و مشتری به‌روزرسانی گردید.');
       loadPayments();
+      onRefreshData?.();
     } catch (err: any) {
       alert(err.message);
     }

@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import { db } from './db.js';
+import { dbQueryAll, dbQueryGet } from './db.js';
 import { getCustomerFinancialSummary } from './finance.js';
 import { getTodayJalali, formatToman } from '../lib/dateUtils.js';
 import fs from 'fs';
@@ -13,7 +13,6 @@ function shapeText(text: string | number | null | undefined): string {
   const str = String(text);
   try {
     const shaped = PersianShaper.convertArabic(str);
-    // Reverse word order for RTL rendering in standard left-to-right PDF text streams
     return shaped.split(' ').reverse().join(' ');
   } catch {
     return str;
@@ -21,34 +20,34 @@ function shapeText(text: string | number | null | undefined): string {
 }
 
 export async function generateCustomerPdfReport(customerId: number): Promise<Buffer> {
-  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId) as any;
+  const customer = await dbQueryGet<any>('SELECT * FROM customers WHERE id = ?', [customerId]);
   if (!customer) {
     throw new Error('مشتری یافت نشد.');
   }
 
-  const settingsRows = db.prepare('SELECT key, value FROM app_settings').all() as any[];
+  const settingsRows = await dbQueryAll<any>('SELECT key, value FROM app_settings');
   const settings: Record<string, string> = {};
   for (const s of settingsRows) {
     settings[s.key] = s.value;
   }
   const storeName = settings['store_name'] || 'فروشگاه حاج کریم و پسران';
 
-  const summary = getCustomerFinancialSummary(customerId);
+  const summary = await getCustomerFinancialSummary(customerId);
   const todayJalali = getTodayJalali();
 
-  // Invoices of this customer
-  const invoices = db.prepare(`
-    SELECT * FROM invoices 
-    WHERE customer_id = ? AND status != 'cancelled'
-    ORDER BY id ASC
-  `).all(customerId) as any[];
+  const invoices = await dbQueryAll<any>(
+    `SELECT * FROM invoices
+     WHERE customer_id = ? AND status != 'cancelled'
+     ORDER BY id ASC`,
+    [customerId]
+  );
 
-  // Payments of this customer
-  const payments = db.prepare(`
-    SELECT * FROM payments 
-    WHERE customer_id = ? AND status = 'valid'
-    ORDER BY id ASC
-  `).all(customerId) as any[];
+  const payments = await dbQueryAll<any>(
+    `SELECT * FROM payments
+     WHERE customer_id = ? AND status = 'valid'
+     ORDER BY id ASC`,
+    [customerId]
+  );
 
   return new Promise((resolve, reject) => {
     try {
@@ -75,9 +74,9 @@ export async function generateCustomerPdfReport(customerId: number): Promise<Buf
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', (err) => reject(err));
 
-      const pageWidth = doc.page.width; // 595.28
+      const pageWidth = doc.page.width;
       const margin = 36;
-      const contentWidth = pageWidth - (margin * 2); // ~523
+      const contentWidth = pageWidth - (margin * 2);
 
       // Top Decorative Header Box
       doc.rect(margin, margin, contentWidth, 54).fillAndStroke('#0f172a', '#0f172a');
@@ -100,21 +99,18 @@ export async function generateCustomerPdfReport(customerId: number): Promise<Buf
       // KPI Summary Cards (3 cards)
       const cardWidth = (contentWidth - 16) / 3;
 
-      // Card 1: Total Invoices
       doc.rect(margin, currentY, cardWidth, 42).fillAndStroke('#f8fafc', '#e2e8f0');
       doc.font(fontPath).fontSize(7.5).fillColor('#64748b');
       doc.text(shapeText('جمع کل خریدهای ثبت شده:'), margin + 8, currentY + 6, { width: cardWidth - 16, align: 'right' });
       doc.font(fontBoldPath).fontSize(9.5).fillColor('#0f172a');
       doc.text(shapeText(formatToman(summary.totalInvoiced)), margin + 8, currentY + 22, { width: cardWidth - 16, align: 'center' });
 
-      // Card 2: Total Payments
       doc.rect(margin + cardWidth + 8, currentY, cardWidth, 42).fillAndStroke('#f0fdf4', '#bbf7d0');
       doc.font(fontPath).fontSize(7.5).fillColor('#15803d');
       doc.text(shapeText('جمع کل مبالغ پرداختی:'), margin + cardWidth + 16, currentY + 6, { width: cardWidth - 16, align: 'right' });
       doc.font(fontBoldPath).fontSize(9.5).fillColor('#15803d');
       doc.text(shapeText(formatToman(summary.totalPaid)), margin + cardWidth + 16, currentY + 22, { width: cardWidth - 16, align: 'center' });
 
-      // Card 3: Net Balance
       const isDebtor = summary.netBalance > 0;
       const isCreditor = summary.netBalance < 0;
       const balanceBg = isDebtor ? '#fef2f2' : isCreditor ? '#f0fdf4' : '#f8fafc';
@@ -130,13 +126,11 @@ export async function generateCustomerPdfReport(customerId: number): Promise<Buf
 
       currentY += 52;
 
-      // Invoices Section Header
       doc.font(fontBoldPath).fontSize(9).fillColor('#0f172a');
       doc.text(shapeText(`■ فهرست فاکتورهای مشتری (${invoices.length} فاکتور)`), margin, currentY, { width: contentWidth, align: 'right' });
       currentY += 16;
 
-      // Invoices Table Header
-      const colWidths = [60, 80, 80, 85, 90, 128]; // total 523
+      const colWidths = [60, 80, 80, 85, 90, 128];
       const invoiceCols = ['وضعیت', 'مانده بدهی', 'پرداخت شده', 'مبلغ کل (تومان)', 'تاریخ صدور', 'شماره فاکتور'];
 
       doc.rect(margin, currentY, contentWidth, 20).fillAndStroke('#0f172a', '#0f172a');
@@ -149,7 +143,6 @@ export async function generateCustomerPdfReport(customerId: number): Promise<Buf
       }
       currentY += 20;
 
-      // Invoices Rows
       if (invoices.length === 0) {
         doc.rect(margin, currentY, contentWidth, 22).fillAndStroke('#ffffff', '#e2e8f0');
         doc.font(fontPath).fontSize(8).fillColor('#94a3b8');
@@ -192,7 +185,6 @@ export async function generateCustomerPdfReport(customerId: number): Promise<Buf
 
       currentY += 16;
 
-      // Payments Section Header
       if (currentY > 680) {
         doc.addPage();
         currentY = margin;
@@ -202,8 +194,7 @@ export async function generateCustomerPdfReport(customerId: number): Promise<Buf
       doc.text(shapeText(`■ فهرست پرداخت‌ها و دریافتی‌ها (${payments.length} پرداخت)`), margin, currentY, { width: contentWidth, align: 'right' });
       currentY += 16;
 
-      // Payments Table Header
-      const payColWidths = [143, 90, 100, 110, 80]; // total 523
+      const payColWidths = [143, 90, 100, 110, 80];
       const payCols = ['کد پیگیری / توضیحات', 'روش پرداخت', 'مبلغ پرداختی (تومان)', 'تاریخ پرداخت', 'شناسه پرداخت'];
 
       doc.rect(margin, currentY, contentWidth, 20).fillAndStroke('#1e293b', '#1e293b');
@@ -216,7 +207,6 @@ export async function generateCustomerPdfReport(customerId: number): Promise<Buf
       }
       currentY += 20;
 
-      // Payments Rows
       if (payments.length === 0) {
         doc.rect(margin, currentY, contentWidth, 22).fillAndStroke('#ffffff', '#e2e8f0');
         doc.font(fontPath).fontSize(8).fillColor('#94a3b8');
@@ -264,7 +254,6 @@ export async function generateCustomerPdfReport(customerId: number): Promise<Buf
 
       currentY += 20;
 
-      // Footer Verification Note
       if (currentY > 760) {
         doc.addPage();
         currentY = margin;

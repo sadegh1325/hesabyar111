@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar, navItems } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { LoginPage } from './components/LoginPage';
@@ -22,6 +22,7 @@ import { PrintStatementModal } from './components/PrintStatementModal';
 import { PaymentModal } from './components/PaymentModal';
 import { Customer, Product, Invoice, Payment } from './types';
 import { fetchApi, setAuthToken, downloadFile } from './lib/api';
+import { syncFullDatabaseWithServer, pullAndCacheSnapshot } from './lib/sync';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { BottomNav } from './components/BottomNav';
 
@@ -33,10 +34,12 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Core Data
+  // Core Data & Sync Version
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [storeSettings, setStoreSettings] = useState<Record<string, string>>({});
+  const [dataVersion, setDataVersion] = useState(0);
+  const initialSyncedRef = useRef(false);
 
   // Modals state
   const [printInvoiceData, setPrintInvoiceData] = useState<Invoice | null>(null);
@@ -70,89 +73,64 @@ export default function App() {
       .finally(() => setCheckingAuth(false));
   }, []);
 
-  // Fetch core store data when logged in with client-side fail-safe persistence
-  const refreshCoreData = async () => {
+  // Fetch and synchronize full store database across all entities
+  const refreshCoreData = useCallback(async (forceBidirectionalSync = false) => {
     if (!currentUser) return;
-    try {
-      const serverCustomers = await fetchApi<Customer[]>('/customers');
-
-      // Client-side fail-safe: check if local backup has customers that serverless instance might have missed
-      let localCustomers: Customer[] = [];
-      try {
-        const raw = localStorage.getItem('hesabyar_persisted_customers_v1');
-        if (raw) localCustomers = JSON.parse(raw);
-      } catch {}
-
-      // If server only has customer 1 (default) but client has saved customers, sync them to the server instance
-      if (serverCustomers.length <= 1 && localCustomers.length > 1) {
-        try {
-          await fetchApi('/customers/batch-sync', {
-            method: 'POST',
-            body: JSON.stringify({ customers: localCustomers })
-          });
-          const reFetched = await fetchApi<Customer[]>('/customers');
-          setCustomers(reFetched);
-          return;
-        } catch {}
-      }
-
-      setCustomers(serverCustomers);
-      // Update local persistent backup
-      if (serverCustomers.length > 0) {
-        try {
-          localStorage.setItem('hesabyar_persisted_customers_v1', JSON.stringify(serverCustomers));
-        } catch {}
-      }
-    } catch (err) {
-      console.warn('Failed to fetch customers:', err);
-    }
 
     try {
-      const serverProducts = await fetchApi<Product[]>('/products');
-      let localProducts: Product[] = [];
-      try {
-        const raw = localStorage.getItem('hesabyar_persisted_products_v1');
-        if (raw) localProducts = JSON.parse(raw);
-      } catch {}
-
-      // If server has 0 products but client has saved products, sync them to the server instance
-      if (serverProducts.length === 0 && localProducts.length > 0) {
-        try {
-          await fetchApi('/products/batch-sync', {
-            method: 'POST',
-            body: JSON.stringify({ products: localProducts })
-          });
-          const reFetched = await fetchApi<Product[]>('/products');
-          setProducts(reFetched);
-        } catch {
-          setProducts(localProducts);
-        }
+      if (!initialSyncedRef.current || forceBidirectionalSync) {
+        await syncFullDatabaseWithServer();
+        initialSyncedRef.current = true;
       } else {
-        setProducts(serverProducts);
-        if (serverProducts.length > 0) {
-          try {
-            localStorage.setItem('hesabyar_persisted_products_v1', JSON.stringify(serverProducts));
-          } catch {}
-        }
+        await pullAndCacheSnapshot();
       }
     } catch (err) {
-      console.warn('Failed to fetch products:', err);
+      console.warn('Full database sync warning:', err);
     }
 
-    fetchApi<Record<string, string>>('/settings').then(setStoreSettings).catch(() => {});
-  };
+    const [customersRes, productsRes, settingsRes] = await Promise.allSettled([
+      fetchApi<Customer[]>('/customers'),
+      fetchApi<Product[]>('/products'),
+      fetchApi<Record<string, string>>('/settings')
+    ]);
+
+    if (customersRes.status === 'fulfilled') {
+      setCustomers(customersRes.value);
+    }
+    if (productsRes.status === 'fulfilled') {
+      setProducts(productsRes.value);
+    }
+    if (settingsRes.status === 'fulfilled') {
+      setStoreSettings(settingsRes.value);
+    }
+
+    setDataVersion((v) => v + 1);
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser) {
-      refreshCoreData();
+      initialSyncedRef.current = false;
+      refreshCoreData(true);
     }
-  }, [currentUser]);
+  }, [currentUser, refreshCoreData]);
+
+  // Re-sync automatically when browser comes back online
+  useEffect(() => {
+    const handleOnline = () => {
+      if (currentUser) {
+        refreshCoreData(true);
+      }
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [currentUser, refreshCoreData]);
 
   const handleLogout = async () => {
     try {
       await fetchApi('/auth/logout', { method: 'POST' });
     } catch {}
     setAuthToken(null);
+    initialSyncedRef.current = false;
     try {
       localStorage.setItem('hesabyar_manual_logout', 'true');
     } catch {}
@@ -171,7 +149,6 @@ export default function App() {
   const handleDownloadPdf = async (customerId: number) => {
     try {
       const cust = customers.find(c => c.id === customerId);
-      // Save directly with customer name as requested: "سیوش به صورت اسم مشتری باشه"
       const filename = cust?.name ? `${cust.name.trim()}.pdf` : `صورتحساب_مشتری_${customerId}.pdf`;
       await downloadFile(`/reports/pdf/${customerId}`, filename);
     } catch (err: any) {
@@ -219,7 +196,6 @@ export default function App() {
       {/* Main Viewport */}
       <div className="flex-1 flex flex-col min-w-0 lg:mr-64 pb-20 lg:pb-0 overflow-x-hidden">
         <OfflineIndicator />
-        {/* Top Bar adhering to Top Bar Contract */}
         <TopBar
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           onNewSale={() => setActiveTab('new-sale')}
@@ -233,6 +209,7 @@ export default function App() {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
           {activeTab === 'dashboard' && (
             <DashboardPage
+              dataVersion={dataVersion}
               onNavigate={setActiveTab}
               onOpenPaymentModal={() => handleOpenPaymentModal()}
             />
@@ -242,13 +219,15 @@ export default function App() {
             <NewSalePage
               customers={customers}
               products={products}
-              onRefreshData={refreshCoreData}
+              onRefreshData={() => refreshCoreData(false)}
               onOpenPrintInvoice={(inv) => setPrintInvoiceData(inv)}
             />
           )}
 
           {activeTab === 'invoices' && (
             <InvoicesPage
+              dataVersion={dataVersion}
+              onRefreshData={() => refreshCoreData(false)}
               onNewSale={() => setActiveTab('new-sale')}
               onOpenPrintInvoice={(inv) => setPrintInvoiceData(inv)}
               onOpenPaymentForInvoice={(inv) => handleOpenPaymentModal(inv.customer_id, inv.id)}
@@ -258,7 +237,7 @@ export default function App() {
           {activeTab === 'customers' && (
             <CustomersPage
               customers={customers}
-              onRefreshData={refreshCoreData}
+              onRefreshData={() => refreshCoreData(false)}
               onOpenStatement={handleOpenStatement}
               onOpenPaymentForCustomer={(cId) => handleOpenPaymentModal(cId)}
               onDownloadPdf={handleDownloadPdf}
@@ -267,6 +246,7 @@ export default function App() {
 
           {activeTab === 'receivables' && (
             <ReceivablesPage
+              dataVersion={dataVersion}
               onOpenPaymentForCustomer={(cId) => handleOpenPaymentModal(cId)}
               onOpenStatement={handleOpenStatement}
             />
@@ -274,6 +254,8 @@ export default function App() {
 
           {activeTab === 'payments' && (
             <PaymentsPage
+              dataVersion={dataVersion}
+              onRefreshData={() => refreshCoreData(false)}
               onOpenNewPayment={() => handleOpenPaymentModal()}
               onPrintReceipt={(p) => setPrintReceiptData(p)}
             />
@@ -282,13 +264,15 @@ export default function App() {
           {activeTab === 'products' && (
             <ProductsPage
               products={products}
-              onRefreshData={refreshCoreData}
+              onRefreshData={() => refreshCoreData(false)}
             />
           )}
 
           {activeTab === 'reports' && <ReportsPage />}
 
-          {activeTab === 'settings' && <SettingsPage />}
+          {activeTab === 'settings' && (
+            <SettingsPage onRefreshData={() => refreshCoreData(true)} />
+          )}
         </main>
       </div>
 
@@ -323,7 +307,7 @@ export default function App() {
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         onSuccess={() => {
-          refreshCoreData();
+          refreshCoreData(false);
         }}
         initialCustomerId={paymentCustomerId}
         initialInvoiceId={paymentInvoiceId}

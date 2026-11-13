@@ -1,27 +1,34 @@
 import * as XLSX from 'xlsx';
-import { db } from './db.js';
+import { dbQueryAll, dbQueryGet } from './db.js';
 import { getCustomerFinancialSummary } from './finance.js';
 
-export function generateComprehensiveExcelReport(options?: { startDate?: string; endDate?: string }): Buffer {
+export async function generateComprehensiveExcelReport(options?: {
+  startDate?: string;
+  endDate?: string;
+}): Promise<Buffer> {
   const wb = XLSX.utils.book_new();
 
   // 1. Customers sheet
-  const customers = db.prepare(`SELECT id, name, phone, address, notes, created_at FROM customers ORDER BY id ASC`).all() as any[];
-  const customersData = customers.map(c => {
-    const summary = getCustomerFinancialSummary(c.id);
-    return {
-      'شناسه': c.id,
-      'نام مشتری': c.name,
-      'شماره تماس': c.phone || '-',
-      'نشانی': c.address || '-',
-      'مجموع خرید (تومان)': summary.totalInvoiced,
-      'مجموع پرداختی (تومان)': summary.totalPaid,
-      'مانده بدهی (تومان)': summary.netBalance > 0 ? summary.netBalance : 0,
-      'اعتبار بستانکاری (تومان)': summary.netBalance < 0 ? Math.abs(summary.netBalance) : 0,
-      'تعداد فاکتور باز': summary.openInvoicesCount,
-      'تاریخ ایجاد': c.created_at
-    };
-  });
+  const customers = await dbQueryAll<any>(
+    `SELECT id, name, phone, address, notes, created_at FROM customers ORDER BY id ASC`
+  );
+  const customersData = await Promise.all(
+    customers.map(async (c) => {
+      const summary = await getCustomerFinancialSummary(Number(c.id));
+      return {
+        'شناسه': c.id,
+        'نام مشتری': c.name,
+        'شماره تماس': c.phone || '-',
+        'نشانی': c.address || '-',
+        'مجموع خرید (تومان)': summary.totalInvoiced,
+        'مجموع پرداختی (تومان)': summary.totalPaid,
+        'مانده بدهی (تومان)': summary.netBalance > 0 ? summary.netBalance : 0,
+        'اعتبار بستانکاری (تومان)': summary.netBalance < 0 ? Math.abs(summary.netBalance) : 0,
+        'تعداد فاکتور باز': summary.openInvoicesCount,
+        'تاریخ ایجاد': c.created_at
+      };
+    })
+  );
   const wsCustomers = XLSX.utils.json_to_sheet(customersData);
   XLSX.utils.book_append_sheet(wb, wsCustomers, 'مشتریان');
 
@@ -44,8 +51,8 @@ export function generateComprehensiveExcelReport(options?: { startDate?: string;
   }
   invQuery += ' ORDER BY i.id DESC';
 
-  const invoices = db.prepare(invQuery).all(...invParams) as any[];
-  const invoicesData = invoices.map(i => ({
+  const invoices = await dbQueryAll<any>(invQuery, invParams);
+  const invoicesData = invoices.map((i) => ({
     'شناسه فاکتور': i.id,
     'شماره فاکتور': i.invoice_number,
     'نام مشتری': i.customer_name_snapshot,
@@ -57,21 +64,30 @@ export function generateComprehensiveExcelReport(options?: { startDate?: string;
     'مبلغ نهایی (تومان)': i.final_total,
     'مبلغ پرداخت شده (تومان)': i.paid_amount,
     'مانده (تومان)': i.remaining_amount,
-    'وضعیت': i.status === 'paid' ? 'تسویه شده' : i.status === 'partially_paid' ? 'پرداخت جزئی' : i.status === 'unpaid' ? 'پرداخت نشده' : i.status === 'draft' ? 'پیش‌نویس' : i.status,
+    'وضعیت':
+      i.status === 'paid'
+        ? 'تسویه شده'
+        : i.status === 'partially_paid'
+        ? 'پرداخت جزئی'
+        : i.status === 'unpaid'
+        ? 'پرداخت نشده'
+        : i.status === 'draft'
+        ? 'پیش‌نویس'
+        : i.status,
     'توضیحات': i.notes || '-'
   }));
   const wsInvoices = XLSX.utils.json_to_sheet(invoicesData);
   XLSX.utils.book_append_sheet(wb, wsInvoices, 'فاکتورها');
 
   // 3. Invoice Items sheet
-  const items = db.prepare(`
+  const items = await dbQueryAll<any>(`
     SELECT ii.id, i.invoice_number, i.customer_name_snapshot, ii.product_name, ii.unit,
            ii.quantity, ii.unit_price, ii.discount_amount, ii.total_amount, i.issue_date
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
     ORDER BY ii.id DESC
-  `).all() as any[];
-  const itemsData = items.map(it => ({
+  `);
+  const itemsData = items.map((it) => ({
     'شناسه ردیف': it.id,
     'شماره فاکتور': it.invoice_number,
     'مشتری': it.customer_name_snapshot,
@@ -87,14 +103,14 @@ export function generateComprehensiveExcelReport(options?: { startDate?: string;
   XLSX.utils.book_append_sheet(wb, wsItems, 'ردیف‌های فاکتورها');
 
   // 4. Payments sheet
-  const payments = db.prepare(`
+  const payments = await dbQueryAll<any>(`
     SELECT p.id, c.name as customer_name, p.amount, p.payment_date, p.payment_method,
            p.tracking_code, p.notes, p.status
     FROM payments p
     JOIN customers c ON c.id = p.customer_id
     ORDER BY p.id DESC
-  `).all() as any[];
-  const paymentsData = payments.map(p => {
+  `);
+  const paymentsData = payments.map((p) => {
     const methodFa: Record<string, string> = {
       card_to_card: 'کارت به کارت',
       bank_transfer: 'کارت به کارت',
@@ -117,50 +133,56 @@ export function generateComprehensiveExcelReport(options?: { startDate?: string;
   XLSX.utils.book_append_sheet(wb, wsPayments, 'پرداخت‌ها');
 
   // 5. Customer Balances sheet
-  const balanceData = customers.map(c => {
-    const summary = getCustomerFinancialSummary(c.id);
-    return {
-      'نام مشتری': c.name,
-      'تلفن': c.phone || '-',
-      'مجموع خریدها (تومان)': summary.totalInvoiced,
-      'مجموع پرداخت‌ها (تومان)': summary.totalPaid,
-      'مانده حساب (تومان)': summary.netBalance,
-      'وضعیت حساب': summary.netBalance > 0 ? 'بدهکار' : summary.netBalance < 0 ? 'بستانکار' : 'تسویه',
-      'فاکتورهای باز': summary.openInvoicesCount,
-      'آخرین پرداخت': summary.lastPaymentDate || '-'
-    };
-  });
+  const balanceData = await Promise.all(
+    customers.map(async (c) => {
+      const summary = await getCustomerFinancialSummary(Number(c.id));
+      return {
+        'نام مشتری': c.name,
+        'تلفن': c.phone || '-',
+        'مجموع خریدها (تومان)': summary.totalInvoiced,
+        'مجموع پرداخت‌ها (تومان)': summary.totalPaid,
+        'مانده حساب (تومان)': summary.netBalance,
+        'وضعیت حساب': summary.netBalance > 0 ? 'بدهکار' : summary.netBalance < 0 ? 'بستانکار' : 'تسویه',
+        'فاکتورهای باز': summary.openInvoicesCount,
+        'آخرین پرداخت': summary.lastPaymentDate || '-'
+      };
+    })
+  );
   const wsBalances = XLSX.utils.json_to_sheet(balanceData);
   XLSX.utils.book_append_sheet(wb, wsBalances, 'مانده حساب مشتریان');
 
   // 6. Daily and Monthly Sales
-  const daily = db.prepare(`
+  const daily = await dbQueryAll<any>(`
     SELECT issue_date as date, COUNT(*) as invoice_count, SUM(final_total) as total_sales, SUM(paid_amount) as total_collected
     FROM invoices
     WHERE status != 'cancelled' AND status != 'draft'
     GROUP BY issue_date
     ORDER BY issue_date DESC
-  `).all() as any[];
-  const dailyData = daily.map(d => ({
+  `);
+  const dailyData = daily.map((d) => ({
     'تاریخ': d.date,
     'تعداد فاکتور': d.invoice_count,
     'فروش ناخالص (تومان)': d.total_sales,
     'دریافتی ثبت شده (تومان)': d.total_collected,
-    'مانده نسیه (تومان)': d.total_sales - d.total_collected
+    'مانده نسیه (تومان)': Number(d.total_sales || 0) - Number(d.total_collected || 0)
   }));
   const wsDaily = XLSX.utils.json_to_sheet(dailyData);
   XLSX.utils.book_append_sheet(wb, wsDaily, 'گزارش فروش روزانه و ماهانه');
 
   // 7. Financial Summary sheet
-  const totalSalesRow = db.prepare(`SELECT COALESCE(SUM(final_total), 0) as s, COALESCE(SUM(paid_amount), 0) as p, COALESCE(SUM(remaining_amount), 0) as r, COUNT(*) as c FROM invoices WHERE status != 'cancelled' AND status != 'draft'`).get() as any;
-  const totalValidPayments = db.prepare(`SELECT COALESCE(SUM(amount), 0) as pay, COUNT(*) as c FROM payments WHERE status = 'valid'`).get() as any;
+  const totalSalesRow = await dbQueryGet<any>(
+    `SELECT COALESCE(SUM(final_total), 0) as s, COALESCE(SUM(paid_amount), 0) as p, COALESCE(SUM(remaining_amount), 0) as r, COUNT(*) as c FROM invoices WHERE status != 'cancelled' AND status != 'draft'`
+  );
+  const totalValidPayments = await dbQueryGet<any>(
+    `SELECT COALESCE(SUM(amount), 0) as pay, COUNT(*) as c FROM payments WHERE status = 'valid'`
+  );
 
   const summaryData = [
-    { 'عنوان شاخص مالی': 'کل مبلغ فاکتورهای صادره', 'مقدار': totalSalesRow.s },
-    { 'عنوان شاخص مالی': 'کل مبالغ وصول شده (تومان)', 'مقدار': totalValidPayments.pay },
-    { 'عنوان شاخص مالی': 'مجموع مطالبات وصول‌نشده (بدهی مشتریان)', 'مقدار': totalSalesRow.r },
-    { 'عنوان شاخص مالی': 'تعداد کل فاکتورهای معتبر', 'مقدار': totalSalesRow.c },
-    { 'عنوان شاخص مالی': 'تعداد اسناد دریافت وجه ثبت‌شده', 'مقدار': totalValidPayments.c }
+    { 'عنوان شاخص مالی': 'کل مبلغ فاکتورهای صادره', 'مقدار': totalSalesRow?.s || 0 },
+    { 'عنوان شاخص مالی': 'کل مبالغ وصول شده (تومان)', 'مقدار': totalValidPayments?.pay || 0 },
+    { 'عنوان شاخص مالی': 'مجموع مطالبات وصول‌نشده (بدهی مشتریان)', 'مقدار': totalSalesRow?.r || 0 },
+    { 'عنوان شاخص مالی': 'تعداد کل فاکتورهای معتبر', 'مقدار': totalSalesRow?.c || 0 },
+    { 'عنوان شاخص مالی': 'تعداد اسناد دریافت وجه ثبت‌شده', 'مقدار': totalValidPayments?.c || 0 }
   ];
   const wsSummary = XLSX.utils.json_to_sheet(summaryData);
   XLSX.utils.book_append_sheet(wb, wsSummary, 'خلاصه مالی');

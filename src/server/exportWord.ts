@@ -1,39 +1,38 @@
-import { Document, Paragraph, Table, TableRow, TableCell, TextRun, HeadingLevel, WidthType, AlignmentType, BorderStyle, Packer } from 'docx';
-import { db } from './db.js';
+import { Document, Paragraph, Table, TableRow, TableCell, TextRun, HeadingLevel, WidthType, AlignmentType, Packer } from 'docx';
+import { dbQueryAll, dbQueryGet } from './db.js';
 import { getCustomerFinancialSummary } from './finance.js';
 import { getTodayJalali, formatToman } from '../lib/dateUtils.js';
 
 export async function generateCustomerWordReport(customerId: number): Promise<Buffer> {
-  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId) as any;
+  const customer = await dbQueryGet<any>('SELECT * FROM customers WHERE id = ?', [customerId]);
   if (!customer) {
     throw new Error('مشتری یافت نشد.');
   }
 
-  const settingsRows = db.prepare('SELECT key, value FROM app_settings').all() as any[];
+  const settingsRows = await dbQueryAll<any>('SELECT key, value FROM app_settings');
   const settings: Record<string, string> = {};
   for (const s of settingsRows) {
     settings[s.key] = s.value;
   }
   const storeName = settings['store_name'] || 'فروشگاه';
 
-  const summary = getCustomerFinancialSummary(customerId);
+  const summary = await getCustomerFinancialSummary(customerId);
   const todayJalali = getTodayJalali();
 
-  // Invoices of this customer
-  const invoices = db.prepare(`
-    SELECT * FROM invoices 
-    WHERE customer_id = ? AND status != 'cancelled'
-    ORDER BY id ASC
-  `).all(customerId) as any[];
+  const invoices = await dbQueryAll<any>(
+    `SELECT * FROM invoices
+     WHERE customer_id = ? AND status != 'cancelled'
+     ORDER BY id ASC`,
+    [customerId]
+  );
 
-  // Payments of this customer
-  const payments = db.prepare(`
-    SELECT * FROM payments 
-    WHERE customer_id = ? AND status = 'valid'
-    ORDER BY id ASC
-  `).all(customerId) as any[];
+  const payments = await dbQueryAll<any>(
+    `SELECT * FROM payments
+     WHERE customer_id = ? AND status = 'valid'
+     ORDER BY id ASC`,
+    [customerId]
+  );
 
-  // Create table rows for invoices
   const invoiceTableRows = [
     new TableRow({
       children: [
@@ -54,16 +53,15 @@ export async function generateCustomerWordReport(customerId: number): Promise<Bu
         children: [
           new TableCell({ children: [new Paragraph({ children: [new TextRun(inv.invoice_number)], alignment: AlignmentType.CENTER })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun(inv.issue_date)], alignment: AlignmentType.CENTER })] }),
-          new TableCell({ children: [new Paragraph({ children: [new TextRun(inv.final_total.toLocaleString('fa-IR'))], alignment: AlignmentType.CENTER })] }),
-          new TableCell({ children: [new Paragraph({ children: [new TextRun(inv.paid_amount.toLocaleString('fa-IR'))], alignment: AlignmentType.CENTER })] }),
-          new TableCell({ children: [new Paragraph({ children: [new TextRun(inv.remaining_amount.toLocaleString('fa-IR'))], alignment: AlignmentType.CENTER })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun(Number(inv.final_total).toLocaleString('fa-IR'))], alignment: AlignmentType.CENTER })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun(Number(inv.paid_amount).toLocaleString('fa-IR'))], alignment: AlignmentType.CENTER })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun(Number(inv.remaining_amount).toLocaleString('fa-IR'))], alignment: AlignmentType.CENTER })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun(statusFa)], alignment: AlignmentType.CENTER })] }),
         ]
       })
     );
   }
 
-  // Create table rows for payments
   const paymentTableRows = [
     new TableRow({
       children: [
@@ -90,7 +88,7 @@ export async function generateCustomerWordReport(customerId: number): Promise<Bu
         children: [
           new TableCell({ children: [new Paragraph({ children: [new TextRun(pIndex.toString())], alignment: AlignmentType.CENTER })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun(pay.payment_date)], alignment: AlignmentType.CENTER })] }),
-          new TableCell({ children: [new Paragraph({ children: [new TextRun(pay.amount.toLocaleString('fa-IR'))], alignment: AlignmentType.CENTER })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun(Number(pay.amount).toLocaleString('fa-IR'))], alignment: AlignmentType.CENTER })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun(methodFa[pay.payment_method] || pay.payment_method)], alignment: AlignmentType.CENTER })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun(pay.tracking_code || pay.notes || '-')], alignment: AlignmentType.CENTER })] }),
         ]
@@ -130,8 +128,8 @@ export async function generateCustomerWordReport(customerId: number): Promise<Bu
             children: [
               new TextRun({ text: `• جمع کل خریدهای ثبت شده: ${formatToman(summary.totalInvoiced)}\n` }),
               new TextRun({ text: `• جمع کل مبالغ پرداخت شده: ${formatToman(summary.totalPaid)}\n` }),
-              new TextRun({ 
-                text: summary.netBalance > 0 
+              new TextRun({
+                text: summary.netBalance > 0
                   ? `• مانده بدهی فعلی: ${formatToman(summary.netBalance)} (بدهکار)`
                   : summary.netBalance < 0
                   ? `• مانده اعتبار مشتری: ${formatToman(Math.abs(summary.netBalance))} (بستانکار)`

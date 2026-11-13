@@ -16,11 +16,13 @@ import { fetchApi } from '../lib/api';
 import { formatToman, formatNumberFa } from '../lib/dateUtils';
 
 interface DashboardPageProps {
+  dataVersion?: number;
   onNavigate: (tab: string) => void;
   onOpenPaymentModal: () => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
+  dataVersion = 0,
   onNavigate,
   onOpenPaymentModal
 }) => {
@@ -32,7 +34,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       .then(setData)
       .catch((err) => console.warn('Dashboard fetch warning:', err))
       .finally(() => setLoading(false));
-  }, []);
+  }, [dataVersion]);
 
   if (loading) {
     return (
